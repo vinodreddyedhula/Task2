@@ -44,7 +44,6 @@ public class PersonServiceImpl implements PersonService {
 	public PersonRequestDTO getPersonDtlsById(int id) {
 
 		return modelMapper.map(personRepository.getById(id), PersonRequestDTO.class);
-
 	}
 
 	@Override
@@ -54,15 +53,24 @@ public class PersonServiceImpl implements PersonService {
 		log.info("---mapping entity to DTO---");
 		List<PersonRequestDTO> personDtls = persons.stream()
 				.map(person -> modelMapper.map(person, PersonRequestDTO.class)).collect(Collectors.toList());
-
-		return prepareResponse(personDtls);
+		List<Object> obj= buildParentChildReltn(personDtls,0);
+		List<PersonDtlsResponse> a=new ArrayList<>();
+		//Converting to actual instance
+		obj.forEach(x->{
+			if(x instanceof PersonDtlsResponse) {
+				PersonDtlsResponse respo=(PersonDtlsResponse) x;
+				a.add(respo);
+			}
+		});
+		ParentChildResponse response=new ParentChildResponse();
+		response.setResponse(a);
+		return response;
 	}
 
 	@LogMethodParam
 	private ParentChildResponse prepareResponse(List<PersonRequestDTO> personDtls) {
 
-		Map<Integer, List<String>> m = personDtls.stream().collect(Collectors.groupingBy(PersonRequestDTO::getParentId,
-				Collectors.mapping(PersonRequestDTO::getName, Collectors.toList())));
+		Map<Integer, List<PersonRequestDTO>> m = personDtls.stream().collect(Collectors.groupingBy(PersonRequestDTO::getParentId));
 
 		ParentChildResponse parentChildResponse = new ParentChildResponse();
 
@@ -72,16 +80,16 @@ public class PersonServiceImpl implements PersonService {
 
 			List<ChildDetailsDTO> subClasses = new ArrayList<ChildDetailsDTO>();
 
-			List<String> subclasses = m.get(x.getId());
+			List<PersonRequestDTO> subclasses = m.get(x.getId());
 			if (subclasses != null && !subclasses.isEmpty()) {
 				subclasses.forEach(y -> {
 
 					ChildDetailsDTO childDtls = new ChildDetailsDTO();
-					childDtls.setName(y);
+					childDtls.setName(y.getName());
 					subClasses.add(childDtls);
 				});
 			}
-			response.setSubClasses(subClasses);
+		//	response.setSubClasses(subClasses);
 			return response;
 		}).collect(Collectors.toList());
 		
@@ -90,42 +98,21 @@ public class PersonServiceImpl implements PersonService {
 		return parentChildResponse;
 
 	}
-
-	//Without Streams
-	private ParentChildResponse prepareResponse1(List<PersonRequestDTO> personDtls) {
-
-		ParentChildResponse parentChildResponse = new ParentChildResponse();
-		List<PersonDtlsResponse> personDtlsList = new ArrayList<PersonDtlsResponse>();
-		for (int i = 0; i < personDtls.size(); i++) {
-			PersonDtlsResponse response = new PersonDtlsResponse();
-			response.setName(personDtls.get(i).getName());
-			List<ChildDetailsDTO> subclasses = new ArrayList<ChildDetailsDTO>();
-			for (int j = 1; j < personDtls.size(); j++) {
-				if (personDtls.get(i).getId() == personDtls.get(j).getParentId()) {
-
-					ChildDetailsDTO childDtls = new ChildDetailsDTO();
-					childDtls.setName(personDtls.get(j).getName());
-					subclasses.add(childDtls);
-				}
-			}
-			response.setSubClasses(subclasses);
-			personDtlsList.add(response);
-		}
-		parentChildResponse.setResponse(personDtlsList);
-		return parentChildResponse;
-
+	
+	@LogMethodParam
+	//Using Recursive mechanism
+	private List<Object> buildParentChildReltn(List<PersonRequestDTO> personDtls,int id) {
+		List<Object> parentClasses = new ArrayList<Object>();
+        for (PersonRequestDTO person : personDtls) {
+            if (person.getParentId() == id) {
+                List<Object> subclasses = buildParentChildReltn(personDtls, person.getId());
+                if (subclasses.isEmpty()) {
+                	parentClasses.add(new PersonDtlsResponse(person.getName()));
+                } else {
+                	parentClasses.add(new PersonDtlsResponse(person.getName(), subclasses));
+                }
+            }
+        }
+		return parentClasses;
 	}
-
-	public void checkForSubClasses(List<PersonRequestDTO> personDtls, List<ChildDetailsDTO> subclasses, int i) {
-
-		for (int j = 1; j < personDtls.size(); j++) {
-			if (personDtls.get(i).getId() == personDtls.get(j).getParentId()) {
-
-				ChildDetailsDTO childDtls = new ChildDetailsDTO();
-				childDtls.setName(personDtls.get(j).getName());
-				subclasses.add(childDtls);
-			}
-		}
-	}
-
 }
